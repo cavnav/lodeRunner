@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Lode Runner Level Editor</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+
+    #canvas-container {
+      display: flex;
+    }
+
+    #canvas {
+      border: 1px solid black;
+      width: 800px;
+      height: 600px;
+      background-color: #f0f0f0;
+      position: relative;
+    }
+
+    #texture-panel {
+      width: 200px;
+      background-color: #ccc;
+      padding: 10px;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #texture-panel img {
+      width: 50px;
+      height: 50px;
+      margin-bottom: 10px;
+      cursor: pointer;
+    }
+
+    .texture {
+      margin-bottom: 10px;
+    }
+
+    #floating-image {
+      position: fixed;
+      pointer-events: none;
+      display: none;
+      width: 40px;
+      height: 40px;
+      z-index: 1000;
+      opacity: 0.8;
+    }
+  </style>
+</head>
+<body>
+  <div id="canvas-container">
+    <!-- Панель текстур -->
+    <div id="texture-panel">
+      <div class="texture">
+        <img src="images/gold.png" id="gold" title="Brick Texture" />
+        <span>золото</span>
+      </div>
+      <div class="texture">
+        <img src="images/brick.png" id="brick" title="Brick Texture" />
+        <span>Кирпич</span>
+      </div>
+      <div class="texture">
+        <img src="images/concrete.png" id="concrete" title="Concrete Texture" />
+        <span>Бетон</span>
+      </div>
+      <div class="texture">
+        <img src="images/kernel.png" alt="Metal" id="kernel" title="Metal Texture" />
+        <span>Металлический стержень</span>
+      </div>
+      <div class="texture">
+        <img src="images/ladder.png" alt="Ladder" id="ladder" title="Ladder Texture" />
+        <span>Лестница</span>
+      </div>
+      <div class="texture">
+        <img src="hero.png" alt="Hero" id="hero" title="Hero Texture" />
+        <span>Главный герой</span>
+      </div>
+      <div class="texture">
+        <img src="robot.png" alt="Robot" id="robot" title="Robot Texture" />
+        <span>Робот</span>
+      </div>
+    </div>
+
+    <!-- Холст для редактирования уровня -->
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <!-- Летающая текстура (теперь появляется сразу под курсором) -->
+  <img id="floating-image" src="" alt="floating" />
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const floatingImage = document.getElementById('floating-image');
+
+    const textures = {
+      gold: 'images/gold.png',
+      brick: 'images/brick.png',
+      concrete: 'images/concrete.png',
+      kernel: 'images/kernel.png',
+      ladder: 'images/ladder.png',
+      hero: 'hero.png',
+      robot: 'robot.png',
+    };
+
+    let currentTexture = null;
+    let autoFillMode = false;
+
+    // Размеры клеток
+    const cellSize = 40;
+    const rows = 15;
+    const cols = 20;
+    canvas.width = cols * cellSize;
+    canvas.height = rows * cellSize;
+
+    // Сетка
+    function drawGrid() {
+      ctx.strokeStyle = '#ddd';
+      for (let i = 0; i <= rows; i++) {
+        ctx.beginPath();
+        ctx.moveTo(0, i * cellSize);
+        ctx.lineTo(cols * cellSize, i * cellSize);
+        ctx.stroke();
+      }
+      for (let i = 0; i <= cols; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i * cellSize, 0);
+        ctx.lineTo(i * cellSize, rows * cellSize);
+        ctx.stroke();
+      }
+    }
+
+    // Получить координаты клетки по позиции мыши
+    function getCellCoordinates(x, y) {
+      const rect = canvas.getBoundingClientRect();
+      const cellX = Math.floor((x - rect.left) / cellSize);
+      const cellY = Math.floor((y - rect.top) / cellSize);
+      return { x: cellX, y: cellY };
+    }
+
+    // Нарисовать текстуру в клетке
+    function drawTextureInCell(cellX, cellY) {
+      if (!currentTexture) return;
+      
+      const img = new Image();
+      img.src = textures[currentTexture];
+      img.onload = () => {
+        ctx.drawImage(img, cellX * cellSize, cellY * cellSize, cellSize, cellSize);
+      };
+    }
+
+    // Выбор текстуры
+    document.querySelectorAll('#texture-panel img').forEach(img => {
+      img.addEventListener('click', (e) => {
+        currentTexture = img.id;
+        floatingImage.src = textures[currentTexture];
+        floatingImage.style.display = 'block';
+        // Позиционируем изображение сразу под курсором
+        floatingImage.style.left = `${e.pageX - 20}px`;
+        floatingImage.style.top = `${e.pageY - 20}px`;
+        autoFillMode = false; // Сброс режима автозаливки при выборе новой текстуры
+      });
+    });
+
+    // Следование текстуры за курсором
+    document.addEventListener('mousemove', (e) => {
+      if (currentTexture) {
+        floatingImage.style.left = `${e.pageX - 20}px`;
+        floatingImage.style.top = `${e.pageY - 20}px`;
+        
+        // Автозаливка при перемещении мыши
+        if (autoFillMode && canvas.contains(e.target)) {
+          const cell = getCellCoordinates(e.clientX, e.clientY);
+          drawTextureInCell(cell.x, cell.y);
+        }
+      }
+    });
+
+    // Обработка кликов на холсте
+    canvas.addEventListener('click', (e) => {
+      if (!currentTexture) return;
+      
+      const cell = getCellCoordinates(e.clientX, e.clientY);
+      
+      if (autoFillMode) {
+        // Если автозаливка включена, любой клик выключает её
+        drawTextureInCell(cell.x, cell.y);
+        autoFillMode = false;
+      } else {
+        // Если автозаливка выключена, клик включает её
+        drawTextureInCell(cell.x, cell.y);
+        autoFillMode = true;
+      }
+    });
+
+    drawGrid();
+  </script>
+</body>
+</html>
