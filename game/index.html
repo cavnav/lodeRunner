@@ -8,11 +8,12 @@
     body {
       font-family: Arial, sans-serif;
       margin: 0;
-      padding: 0;
+      padding: 20px;
     }
 
     #canvas-container {
       display: flex;
+      margin-bottom: 20px;
     }
 
     #canvas {
@@ -52,14 +53,34 @@
       z-index: 1000;
       opacity: 0.8;
     }
+
+    #controls {
+      margin-bottom: 20px;
+    }
+
+    button {
+      padding: 10px 15px;
+      margin-right: 10px;
+      cursor: pointer;
+    }
+
+    #file-input {
+      display: none;
+    }
   </style>
 </head>
 <body>
+  <div id="controls">
+    <button id="save-btn">Сохранить уровень</button>
+    <button id="load-btn">Загрузить уровень</button>
+    <input type="file" id="file-input" accept=".json" />
+  </div>
+
   <div id="canvas-container">
     <!-- Панель текстур -->
     <div id="texture-panel">
       <div class="texture">
-        <img src="images/gold.png" id="gold" title="Brick Texture" />
+        <img src="images/gold.png" id="gold" title="Gold Texture" />
         <span>золото</span>
       </div>
       <div class="texture">
@@ -92,13 +113,16 @@
     <canvas id="canvas"></canvas>
   </div>
 
-  <!-- Летающая текстура (теперь появляется сразу под курсором) -->
+  <!-- Летающая текстура -->
   <img id="floating-image" src="" alt="floating" />
 
   <script>
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
     const floatingImage = document.getElementById('floating-image');
+    const saveBtn = document.getElementById('save-btn');
+    const loadBtn = document.getElementById('load-btn');
+    const fileInput = document.getElementById('file-input');
 
     const textures = {
       gold: 'images/gold.png',
@@ -119,6 +143,9 @@
     const cols = 20;
     canvas.width = cols * cellSize;
     canvas.height = rows * cellSize;
+
+    // === Глобальное состояние клеток ===
+    const levelCells = Array.from({ length: rows }, () => Array(cols).fill(null));
 
     // Сетка
     function drawGrid() {
@@ -145,15 +172,18 @@
       return { x: cellX, y: cellY };
     }
 
-    // Нарисовать текстуру в клетке
+    // Нарисовать текстуру в клетке и обновить state
     function drawTextureInCell(cellX, cellY) {
       if (!currentTexture) return;
-      
+
       const img = new Image();
       img.src = textures[currentTexture];
       img.onload = () => {
         ctx.drawImage(img, cellX * cellSize, cellY * cellSize, cellSize, cellSize);
       };
+
+      // === Сохраняем ID текстуры в state ===
+      levelCells[cellY][cellX] = currentTexture;
     }
 
     // Выбор текстуры
@@ -162,10 +192,9 @@
         currentTexture = img.id;
         floatingImage.src = textures[currentTexture];
         floatingImage.style.display = 'block';
-        // Позиционируем изображение сразу под курсором
         floatingImage.style.left = `${e.pageX - 20}px`;
         floatingImage.style.top = `${e.pageY - 20}px`;
-        autoFillMode = false; // Сброс режима автозаливки при выборе новой текстуры
+        autoFillMode = false;
       });
     });
 
@@ -174,8 +203,7 @@
       if (currentTexture) {
         floatingImage.style.left = `${e.pageX - 20}px`;
         floatingImage.style.top = `${e.pageY - 20}px`;
-        
-        // Автозаливка при перемещении мыши
+
         if (autoFillMode && canvas.contains(e.target)) {
           const cell = getCellCoordinates(e.clientX, e.clientY);
           drawTextureInCell(cell.x, cell.y);
@@ -186,20 +214,86 @@
     // Обработка кликов на холсте
     canvas.addEventListener('click', (e) => {
       if (!currentTexture) return;
-      
+
       const cell = getCellCoordinates(e.clientX, e.clientY);
-      
+
       if (autoFillMode) {
-        // Если автозаливка включена, любой клик выключает её
         drawTextureInCell(cell.x, cell.y);
         autoFillMode = false;
       } else {
-        // Если автозаливка выключена, клик включает её
         drawTextureInCell(cell.x, cell.y);
         autoFillMode = true;
       }
     });
 
+    // === Сохранение уровня ===
+    function saveLevel() {
+      const levelData = {
+        width: cols,
+        height: rows,
+        cells: levelCells
+      };
+
+      const json = JSON.stringify(levelData, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'level.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    // === Загрузка уровня ===
+    function loadLevel(file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const levelData = JSON.parse(e.target.result);
+          clearCanvas();
+
+          // Обновляем наш state
+          for (let y = 0; y < rows; y++) {
+            for (let x = 0; x < cols; x++) {
+              levelCells[y][x] = levelData.cells[y][x];
+              if (levelCells[y][x]) {
+                const img = new Image();
+                img.src = textures[levelCells[y][x]];
+                img.onload = () => {
+                  ctx.drawImage(img, x * cellSize, y * cellSize, cellSize, cellSize);
+                };
+              }
+            }
+          }
+        } catch (error) {
+          alert('Ошибка загрузки файла!');
+          console.error(error);
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    // Очистка холста
+    function clearCanvas() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawGrid();
+    }
+
+    // Кнопка "Сохранить"
+    saveBtn.addEventListener('click', saveLevel);
+
+    // Кнопка "Загрузить"
+    loadBtn.addEventListener('click', () => fileInput.click());
+
+    // Обработка выбранного файла
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files[0]) {
+        loadLevel(e.target.files[0]);
+      }
+    });
+
+    // Инициализация
     drawGrid();
   </script>
 </body>
