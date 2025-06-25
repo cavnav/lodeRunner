@@ -18,10 +18,7 @@
 
     #canvas {
       border: 1px solid black;
-      width: 800px;
-      height: 600px;
       background-color: #f0f0f0;
-      position: relative;
     }
 
     #texture-panel {
@@ -38,10 +35,6 @@
       height: 50px;
       margin-bottom: 10px;
       cursor: pointer;
-    }
-
-    .texture {
-      margin-bottom: 10px;
     }
 
     #floating-image {
@@ -77,224 +70,239 @@
   </div>
 
   <div id="canvas-container">
-    <!-- Панель текстур -->
     <div id="texture-panel">
-      <div class="texture">
-        <img src="images/gold.png" id="gold" title="Gold Texture" />
-        <span>золото</span>
-      </div>
-      <div class="texture">
-        <img src="images/brick.png" id="brick" title="Brick Texture" />
-        <span>Кирпич</span>
-      </div>
-      <div class="texture">
-        <img src="images/concrete.png" id="concrete" title="Concrete Texture" />
-        <span>Бетон</span>
-      </div>
-      <div class="texture">
-        <img src="images/kernel.png" alt="Metal" id="kernel" title="Metal Texture" />
-        <span>Металлический стержень</span>
-      </div>
-      <div class="texture">
-        <img src="images/ladder.png" alt="Ladder" id="ladder" title="Ladder Texture" />
-        <span>Лестница</span>
-      </div>
-      <div class="texture">
-        <img src="hero.png" alt="Hero" id="hero" title="Hero Texture" />
-        <span>Главный герой</span>
-      </div>
-      <div class="texture">
-        <img src="robot.png" alt="Robot" id="robot" title="Robot Texture" />
-        <span>Робот</span>
-      </div>
+      <img src="images/gold.png" id="gold" title="Золото">
+      <img src="images/brick.png" id="brick" title="Кирпич">
+      <img src="images/concrete.png" id="concrete" title="Бетон">
+      <img src="images/kernel.png" id="kernel" title="Металл">
+      <img src="images/ladder.png" id="ladder" title="Лестница">
+      <img src="images/hero.png" id="hero" title="Герой">
+      <img src="robot.png" id="robot" title="Робот">
     </div>
-
-    <!-- Холст для редактирования уровня -->
     <canvas id="canvas"></canvas>
   </div>
 
-  <!-- Летающая текстура -->
   <img id="floating-image" src="" alt="floating" />
 
   <script>
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
-    const floatingImage = document.getElementById('floating-image');
-    const saveBtn = document.getElementById('save-btn');
-    const loadBtn = document.getElementById('load-btn');
-    const fileInput = document.getElementById('file-input');
-
     const textures = {
       gold: 'images/gold.png',
       brick: 'images/brick.png',
       concrete: 'images/concrete.png',
       kernel: 'images/kernel.png',
       ladder: 'images/ladder.png',
-      hero: 'hero.png',
+      hero: 'images/hero.png',
       robot: 'robot.png',
     };
-
-    let currentTexture = null;
-    let autoFillMode = false;
-
-    // Размеры клеток
     const cellSize = 40;
     const rows = 15;
     const cols = 20;
     canvas.width = cols * cellSize;
     canvas.height = rows * cellSize;
 
-    // === Глобальное состояние клеток ===
     const levelCells = Array.from({ length: rows }, () => Array(cols).fill(null));
+    const loadedImages = {};
+    let currentTexture = null;
+    let autoFillMode = false;
+    let heroX = null;
+    let heroY = null;
 
-    // Сетка
     function drawGrid() {
       ctx.strokeStyle = '#ddd';
-      for (let i = 0; i <= rows; i++) {
+      for (let y = 0; y <= rows; y++) {
         ctx.beginPath();
-        ctx.moveTo(0, i * cellSize);
-        ctx.lineTo(cols * cellSize, i * cellSize);
+        ctx.moveTo(0, y * cellSize);
+        ctx.lineTo(cols * cellSize, y * cellSize);
         ctx.stroke();
       }
-      for (let i = 0; i <= cols; i++) {
+      for (let x = 0; x <= cols; x++) {
         ctx.beginPath();
-        ctx.moveTo(i * cellSize, 0);
-        ctx.lineTo(i * cellSize, rows * cellSize);
+        ctx.moveTo(x * cellSize, 0);
+        ctx.lineTo(x * cellSize, rows * cellSize);
         ctx.stroke();
       }
     }
 
-    // Получить координаты клетки по позиции мыши
+    function drawSingleCell(x, y, textureId) {
+      ctx.clearRect(x * cellSize, y * cellSize, cellSize, cellSize);
+      if (textureId && loadedImages[textureId]) {
+        ctx.drawImage(loadedImages[textureId], x * cellSize, y * cellSize, cellSize, cellSize);
+      }
+      ctx.strokeStyle = '#ddd';
+      ctx.strokeRect(x * cellSize, y * cellSize, cellSize, cellSize);
+    }
+
+    function drawFullMap() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawGrid();
+      for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+          if (levelCells[y][x]) {
+            drawSingleCell(x, y, levelCells[y][x]);
+          }
+        }
+      }
+      if (heroX !== null && heroY !== null) {
+        drawSingleCell(heroX, heroY, 'hero');
+      }
+    }
+
+    function preloadTextures(callback) {
+      const keys = Object.keys(textures);
+      let loaded = 0;
+      for (const key of keys) {
+        const img = new Image();
+        img.src = textures[key];
+        img.onload = () => {
+          loadedImages[key] = img;
+          loaded++;
+          if (loaded === keys.length) callback();
+        };
+      }
+    }
+
     function getCellCoordinates(x, y) {
       const rect = canvas.getBoundingClientRect();
-      const cellX = Math.floor((x - rect.left) / cellSize);
-      const cellY = Math.floor((y - rect.top) / cellSize);
-      return { x: cellX, y: cellY };
-    }
-
-    // Нарисовать текстуру в клетке и обновить state
-    function drawTextureInCell(cellX, cellY) {
-      if (!currentTexture) return;
-
-      const img = new Image();
-      img.src = textures[currentTexture];
-      img.onload = () => {
-        ctx.drawImage(img, cellX * cellSize, cellY * cellSize, cellSize, cellSize);
+      return {
+        x: Math.floor((x - rect.left) / cellSize),
+        y: Math.floor((y - rect.top) / cellSize)
       };
-
-      // === Сохраняем ID текстуры в state ===
-      levelCells[cellY][cellX] = currentTexture;
     }
 
-    // Выбор текстуры
+    function drawTextureInCell(x, y) {
+  if (!currentTexture) return;
+
+  if (currentTexture === 'hero') {
+  // Очищаем предыдущую ячейку
+  if (heroX !== null && heroY !== null) {
+    levelCells[heroY][heroX] = null;
+    drawSingleCell(heroX, heroY, null);
+  }
+
+  heroX = x;
+  heroY = y;
+  levelCells[y][x] = 'hero'; // <== добавь эту строку!
+}
+ else {
+    // Записываем текстуру
+    levelCells[y][x] = currentTexture;
+  }
+
+  drawSingleCell(x, y, currentTexture);
+}
+
+
+    // === Ввод с клавиатуры ===
+    document.addEventListener('keydown', (e) => {
+  if (heroX === null || heroY === null) return;
+  let dx = 0, dy = 0;
+  switch (e.key.toLowerCase()) {
+    case 'w': dy = -1; break;
+    case 's': dy = 1; break;
+    case 'a': dx = -1; break;
+    case 'd': dx = 1; break;
+    default: return;
+  }
+
+  const newX = heroX + dx;
+  const newY = heroY + dy;
+  if (newX >= 0 && newX < cols && newY >= 0 && newY < rows) {
+    // Очистить старую позицию
+    levelCells[heroY][heroX] = null;
+    drawSingleCell(heroX, heroY, null);
+
+    // Обновить позицию
+    heroX = newX;
+    heroY = newY;
+    levelCells[heroY][heroX] = 'hero';
+
+    // Нарисовать героя на новой позиции
+    drawSingleCell(heroX, heroY, 'hero');
+  }
+});
+
+
+    // === Работа с UI ===
     document.querySelectorAll('#texture-panel img').forEach(img => {
       img.addEventListener('click', (e) => {
         currentTexture = img.id;
-        floatingImage.src = textures[currentTexture];
-        floatingImage.style.display = 'block';
-        floatingImage.style.left = `${e.pageX - 20}px`;
-        floatingImage.style.top = `${e.pageY - 20}px`;
+        const floating = document.getElementById('floating-image');
+        floating.src = textures[currentTexture];
+        floating.style.display = 'block';
+        floating.style.left = `${e.pageX - 20}px`;
+        floating.style.top = `${e.pageY - 20}px`;
         autoFillMode = false;
       });
     });
 
-    // Следование текстуры за курсором
     document.addEventListener('mousemove', (e) => {
-      if (currentTexture) {
-        floatingImage.style.left = `${e.pageX - 20}px`;
-        floatingImage.style.top = `${e.pageY - 20}px`;
-
-        if (autoFillMode && canvas.contains(e.target)) {
+      const floating = document.getElementById('floating-image');
+      if (currentTexture && floating) {
+        floating.style.left = `${e.pageX - 20}px`;
+        floating.style.top = `${e.pageY - 20}px`;
+        if (autoFillMode && currentTexture !=='hero' && canvas.contains(e.target)) {
           const cell = getCellCoordinates(e.clientX, e.clientY);
           drawTextureInCell(cell.x, cell.y);
         }
       }
     });
 
-    // Обработка кликов на холсте
     canvas.addEventListener('click', (e) => {
       if (!currentTexture) return;
-
       const cell = getCellCoordinates(e.clientX, e.clientY);
-
-      if (autoFillMode) {
-        drawTextureInCell(cell.x, cell.y);
-        autoFillMode = false;
-      } else {
-        drawTextureInCell(cell.x, cell.y);
-        autoFillMode = true;
-      }
+      drawTextureInCell(cell.x, cell.y);
+      autoFillMode = !autoFillMode;
     });
 
-    // === Сохранение уровня ===
-    function saveLevel() {
-      const levelData = {
-        width: cols,
-        height: rows,
-        cells: levelCells
+    // === Сохранение / Загрузка ===
+    document.getElementById('save-btn').addEventListener('click', () => {
+      const data = {
+        cells: levelCells,
+        heroX,
+        heroY
       };
-
-      const json = JSON.stringify(levelData, null, 2);
-      const blob = new Blob([json], { type: 'application/json' });
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
-
       const a = document.createElement('a');
       a.href = url;
       a.download = 'level.json';
       a.click();
       URL.revokeObjectURL(url);
-    }
+    });
 
-    // === Загрузка уровня ===
-    function loadLevel(file) {
+    document.getElementById('load-btn').addEventListener('click', () => {
+      document.getElementById('file-input').click();
+    });
+
+    document.getElementById('file-input').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
       const reader = new FileReader();
       reader.onload = (e) => {
         try {
-          const levelData = JSON.parse(e.target.result);
-          clearCanvas();
-
-          // Обновляем наш state
+          const data = JSON.parse(e.target.result);
           for (let y = 0; y < rows; y++) {
             for (let x = 0; x < cols; x++) {
-              levelCells[y][x] = levelData.cells[y][x];
-              if (levelCells[y][x]) {
-                const img = new Image();
-                img.src = textures[levelCells[y][x]];
-                img.onload = () => {
-                  ctx.drawImage(img, x * cellSize, y * cellSize, cellSize, cellSize);
-                };
-              }
+              levelCells[y][x] = data.cells[y][x];
             }
           }
-        } catch (error) {
-          alert('Ошибка загрузки файла!');
-          console.error(error);
+          heroX = data.heroX ?? null;
+          heroY = data.heroY ?? null;
+          drawFullMap();
+        } catch (err) {
+          alert('Ошибка загрузки!');
         }
       };
       reader.readAsText(file);
-    }
-
-    // Очистка холста
-    function clearCanvas() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      drawGrid();
-    }
-
-    // Кнопка "Сохранить"
-    saveBtn.addEventListener('click', saveLevel);
-
-    // Кнопка "Загрузить"
-    loadBtn.addEventListener('click', () => fileInput.click());
-
-    // Обработка выбранного файла
-    fileInput.addEventListener('change', (e) => {
-      if (e.target.files[0]) {
-        loadLevel(e.target.files[0]);
-      }
     });
 
-    // Инициализация
+    // === Старт ===
     drawGrid();
+    preloadTextures(() => {
+      drawFullMap();
+    });
   </script>
 </body>
 </html>
