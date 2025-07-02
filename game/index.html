@@ -18,7 +18,7 @@
 
     #canvas {
       border: 1px solid black;
-      background-color: #f0f0f0;
+      background-color: black;
     }
 
     #texture-panel {
@@ -78,6 +78,7 @@
       <img src="images/ladder.png" id="ladder" title="Лестница">
       <img src="images/hero.png" id="hero" title="Герой">
       <img src="robot.png" id="robot" title="Робот">
+      <img src="" id="eraser" title="Стерка">
     </div>
     <canvas id="canvas"></canvas>
   </div>
@@ -95,10 +96,11 @@
       ladder: 'images/ladder.png',
       hero: 'images/hero.png',
       robot: 'robot.png',
+      eraser: 'eraser.png'
     };
     const cellSize = 40;
     const rows = 15;
-    const cols = 20;
+    const cols = 80;
     canvas.width = cols * cellSize;
     canvas.height = rows * cellSize;
 
@@ -123,6 +125,10 @@
         ctx.lineTo(x * cellSize, rows * cellSize);
         ctx.stroke();
       }
+    }
+
+    function eraseCell(x,y) {
+        ctx.clearRect(x * cellSize, y * cellSize, cellSize, cellSize);
     }
 
     function drawSingleCell(x, y, textureId) {
@@ -251,7 +257,12 @@
 
     canvas.addEventListener('click', (e) => {
       if (!currentTexture) return;
+      
       const cell = getCellCoordinates(e.clientX, e.clientY);
+      if (currentTexture == 'eraser') {
+        eraseCell(cell.x,cell.y)
+        return
+      }
       drawTextureInCell(cell.x, cell.y);
       autoFillMode = !autoFillMode;
     });
